@@ -36,7 +36,7 @@ static const auto ws = {1, 2, 4, 8};
 
 TEST_CASE("disasm_marshal", "[disasm][marshal]") {
     SECTION("Bin") {
-        auto ops = {Bin::Op::MOV, Bin::Op::ADD, Bin::Op::SUB, Bin::Op::MUL, Bin::Op::DIV,  Bin::Op::MOD,
+        auto ops = {Bin::Op::MOV, Bin::Op::ADD, Bin::Op::SUB, Bin::Op::MUL, Bin::Op::UDIV,  Bin::Op::UMOD,
                     Bin::Op::OR,  Bin::Op::AND, Bin::Op::LSH, Bin::Op::RSH, Bin::Op::ARSH, Bin::Op::XOR};
         SECTION("Reg src") {
             for (auto op : ops) {
@@ -210,8 +210,8 @@ TEST_CASE("fail unmarshal", "[disasm][marshal]") {
                          "0: Bad register\n");
     check_unmarshal_fail(ebpf_inst{.opcode = ((INST_MEM << 5) | INST_SIZE_W | INST_CLS_LD)},
                          "0: plain LD\n");
-    check_unmarshal_fail(ebpf_inst{.opcode = 0xd4, .dst = 1, .imm = 8}, "0: invalid endian immediate\n");
-    check_unmarshal_fail(ebpf_inst{.opcode = 0xdc, .dst = 1, .imm = 8}, "0: invalid endian immediate\n");
+    check_unmarshal_fail(ebpf_inst{.opcode = INST_ALU_OP_END | INST_END_LE | INST_CLS_ALU, .dst = 1, .imm = 8}, "0: invalid endian immediate\n");
+    check_unmarshal_fail(ebpf_inst{.opcode = INST_ALU_OP_END | INST_END_BE | INST_CLS_ALU, .dst = 1, .imm = 8}, "0: invalid endian immediate\n");
     check_unmarshal_fail(ebpf_inst{}, "0: Bad instruction\n");
     check_unmarshal_fail(ebpf_inst{.opcode = INST_CLS_LDX}, "0: Bad instruction\n");
     check_unmarshal_fail(ebpf_inst{.opcode = ((INST_XADD << 5) | INST_CLS_ST)}, "0: Bad instruction\n");
@@ -235,4 +235,6 @@ TEST_CASE("fail unmarshal", "[disasm][marshal]") {
                          "0: Bad instruction\n");
     check_unmarshal_fail(ebpf_inst{.opcode = (INST_MEM_UNUSED << 5) | INST_SIZE_W | INST_CLS_LDX, .imm = 8},
                          "0: Bad instruction\n");
+    check_unmarshal_fail(ebpf_inst{.opcode = INST_CLS_JMP32}, "0: Bad instruction\n");
+    check_unmarshal_fail(ebpf_inst{.opcode = 0x90 | INST_CLS_JMP32}, "0: Bad instruction\n");
 }
