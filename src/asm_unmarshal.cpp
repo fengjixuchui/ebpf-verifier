@@ -1,7 +1,6 @@
 // Copyright (c) Prevail Verifier contributors.
 // SPDX-License-Identifier: MIT
 #include <cassert>
-#include <cstring> // memcmp
 #include <iostream>
 #include <string>
 #include <vector>
@@ -123,6 +122,10 @@ struct Unmarshaller {
         return {};
     }
 
+    uint64_t sign_extend(int32_t imm) { return (uint64_t)(int64_t)imm; }
+
+    uint64_t zero_extend(int32_t imm) { return (uint64_t)(uint32_t)imm; }
+
     auto getBinValue(pc_t pc, ebpf_inst inst) -> Value {
         if (inst.offset != 0)
             throw InvalidInstruction{pc, "nonzero offset for register alu op"};
@@ -133,7 +136,8 @@ struct Unmarshaller {
         } else {
             if (inst.src != 0)
                 throw InvalidInstruction{pc, "nonzero src for register alu op"};
-            return Imm{(uint32_t)inst.imm};
+            // Imm is a signed 32-bit number.  Sign extend it to 64-bits for storage.
+            return Imm{sign_extend(inst.imm)};
         }
     }
 
@@ -204,7 +208,7 @@ struct Unmarshaller {
                         .offset = inst.offset,
                     },
                 .value =
-                    isLoad ? (Value)Reg{inst.dst} : (isImm ? (Value)Imm{(uint32_t)inst.imm} : (Value)Reg{inst.src}),
+                    isLoad ? (Value)Reg{inst.dst} : (isImm ? (Value)Imm{zero_extend(inst.imm)} : (Value)Reg{inst.src}),
                 .is_load = isLoad,
             };
             return res;
@@ -215,6 +219,8 @@ struct Unmarshaller {
                 ((inst.opcode & INST_SIZE_MASK) != INST_SIZE_W &&
                  (inst.opcode & INST_SIZE_MASK) != INST_SIZE_DW))
                 throw InvalidInstruction(pc, "Bad instruction");
+            if (inst.imm != 0)
+                throw InvalidInstruction(pc, "Unsupported atomic instruction");
             return LockAdd{
                 .access =
                     Deref{
@@ -233,7 +239,7 @@ struct Unmarshaller {
     auto makeAluOp(size_t pc, ebpf_inst inst) -> Instruction {
         if (inst.dst == R10_STACK_POINTER)
             throw InvalidInstruction(pc, "Invalid target r10");
-        return std::visit(overloaded{[&](Un::Op op) -> Instruction { return Un{.op = op, .dst = Reg{inst.dst}}; },
+        return std::visit(overloaded{[&](Un::Op op) -> Instruction { return Un{.op = op, .dst = Reg{inst.dst}, .is64 = (inst.opcode & INST_CLS_MASK) == INST_CLS_ALU64}; },
                                      [&](Bin::Op op) -> Instruction {
                                          Bin res{
                                              .op = op,
@@ -253,7 +259,7 @@ struct Unmarshaller {
         if (pc >= insts.size() - 1)
             throw InvalidInstruction(pc, "incomplete LDDW");
         if (inst.src > 1 || inst.dst > R10_STACK_POINTER || inst.offset != 0)
-            note("LDDW uses reserved fields");
+            throw InvalidInstruction(pc, "LDDW uses reserved fields");
 
         if (inst.src == 1) {
             // magic number, meaning we're a per-process file descriptor defining the map.
@@ -264,7 +270,7 @@ struct Unmarshaller {
 
         ebpf_inst next = insts[pc + 1];
         if (next.opcode != 0 || next.dst != 0 || next.src != 0 || next.offset != 0)
-            note("invalid LDDW");
+            throw InvalidInstruction(pc, "invalid LDDW");
         return Bin{
             .op = Bin::Op::MOV,
             .dst = Reg{inst.dst},
@@ -359,8 +365,6 @@ struct Unmarshaller {
             if ((inst.opcode & INST_CLS_MASK) != INST_CLS_JMP)
                 throw InvalidInstruction(pc, "Bad instruction");
         default: {
-            if ((inst.opcode & INST_CLS_MASK) != INST_CLS_JMP)
-                throw InvalidInstruction(pc, "JMP32 is not yet supported");
             pc_t new_pc = pc + 1 + inst.offset;
             if (new_pc >= insts.size())
                 throw InvalidInstruction(pc, "jump out of bounds");
@@ -372,7 +376,8 @@ struct Unmarshaller {
                                                         .op = getJmpOp(pc, inst.opcode),
                                                         .left = Reg{inst.dst},
                                                         .right = (inst.opcode & INST_SRC_REG) ? (Value)Reg{inst.src}
-                                                                                              : Imm{(uint32_t)inst.imm},
+                                                                                              : Imm{sign_extend(inst.imm)},
+                                                        .is64 = ((inst.opcode & INST_CLS_MASK) == INST_CLS_JMP)
                                                     };
             return Jmp{
                 .cond = cond,
@@ -423,19 +428,6 @@ struct Unmarshaller {
                 break;
             }
             }
-            /*
-            vector<ebpf_inst> marshalled = marshal(new_ins[0], pc);
-            ebpf_inst actual = marshalled[0];
-            if (std::memcmp(&actual, &inst, sizeof(inst))) {
-                std::cerr << "new: " << new_ins[0] << "\n";
-                compare("opcode", actual.opcode, inst.opcode);
-                compare("dst", actual.dst, inst.dst);
-                compare("src", actual.src, inst.src);
-                compare("offset", actual.offset, inst.offset);
-                compare("imm", actual.imm, inst.imm);
-                std::cerr << "\n";
-            }
-            */
             if (pc == insts.size() - 1 && fallthrough)
                 note("fallthrough in last instruction");
 

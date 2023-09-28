@@ -28,16 +28,18 @@
 #include <utility>
 
 #include "crab/variable.hpp"
-#include "crab/split_dbm.hpp"
+#include "crab/add_bottom.hpp"
 
 #include "crab/bitset_domain.hpp"
 
 namespace crab::domains {
 
 // Numerical abstract domain.
-using NumAbsDomain = SplitDBM;
+using NumAbsDomain = AddBottom;
 
 void clear_global_state();
+
+void clear_thread_local_state();
 
 class array_domain_t final {
     bitset_domain_t num_bytes;
@@ -85,7 +87,7 @@ class array_domain_t final {
     // Perform array stores over an array segment
     void store_numbers(NumAbsDomain& inv, variable_t _idx, variable_t _width);
 
-    void initialize_numbers(int lb, int width) { num_bytes.reset(lb, width); }
+    void initialize_numbers(int lb, int width);
 };
 
 }

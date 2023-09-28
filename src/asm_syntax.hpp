@@ -108,13 +108,14 @@ struct Un {
 
     Op op;
     Reg dst;
+    bool is64{};
 };
 
 /// This instruction is encoded similarly to LDDW.
 /// See comment in makeLddw() at asm_unmarshal.cpp
 struct LoadMapFd {
     Reg dst;
-    int mapfd{};
+    int32_t mapfd{};
 };
 
 struct Condition {
@@ -136,6 +137,7 @@ struct Condition {
     Op op;
     Reg left;
     Value right;
+    bool is64{};
 };
 
 struct Jmp {
@@ -180,9 +182,9 @@ struct Call {
 struct Exit {};
 
 struct Deref {
-    int width{};
+    int32_t width{};
     Reg basereg;
-    int offset{};
+    int32_t offset{};
 };
 
 /// Load/store instruction.
@@ -196,8 +198,8 @@ struct Mem {
 /// function call, and analyzed as one, e.g., by scratching caller-saved
 /// registers after it is performed.
 struct Packet {
-    int width{};
-    int offset{};
+    int32_t width{};
+    int32_t offset{};
     std::optional<Reg> regoffset;
 };
 
@@ -270,7 +272,7 @@ enum class AccessType {
 
 struct ValidAccess {
     Reg reg;
-    int offset{};
+    int32_t offset{};
     Value width{Imm{0}};
     bool or_null{};
     AccessType access_type{};
@@ -307,6 +309,12 @@ struct Assert {
     Assert(AssertionConstraint cst): cst(cst) { }
 };
 
+using Instruction = std::variant<Undefined, Bin, Un, LoadMapFd, Call, Exit, Jmp, Mem, Packet, LockAdd, Assume, Assert>;
+
+using LabeledInstruction = std::tuple<label_t, Instruction, std::optional<btf_line_info_t>>;
+using InstructionSeq = std::vector<LabeledInstruction>;
+
+
 #define DECLARE_EQ5(T, f1, f2, f3, f4, f5)                                                   \
     inline bool operator==(T const& a, T const& b) {                                         \
         return a.f1 == b.f1 && a.f2 == b.f2 && a.f3 == b.f3 && a.f4 == b.f4 && a.f5 == b.f5; \
@@ -317,11 +325,6 @@ struct Assert {
     inline bool operator==(T const& a, T const& b) { return a.f1 == b.f1 && a.f2 == b.f2; }
 #define DECLARE_EQ1(T, f1) \
     inline bool operator==(T const& a, T const& b) { return a.f1 == b.f1; }
-
-using Instruction = std::variant<Undefined, Bin, Un, LoadMapFd, Call, Exit, Jmp, Mem, Packet, LockAdd, Assume, Assert>;
-
-using LabeledInstruction = std::tuple<label_t, Instruction, std::optional<btf_line_info_t>>;
-using InstructionSeq = std::vector<LabeledInstruction>;
 
 using pc_t = uint16_t;
 

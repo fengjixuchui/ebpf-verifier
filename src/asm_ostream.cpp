@@ -3,13 +3,13 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <unordered_map>
 #include <variant>
 #include <vector>
 
+#include "asm_ostream.hpp"
 #include "asm_syntax.hpp"
 #include "crab/cfg.hpp"
-#include "asm_ostream.hpp"
+#include "crab/interval.hpp"
 #include "crab/variable.hpp"
 
 using std::optional;
@@ -79,10 +79,10 @@ std::ostream& operator<<(std::ostream& os, Condition::Op op) {
     case Op::NE: return os << "!=";
     case Op::SET: return os << "&==";
     case Op::NSET: return os << "&!="; // not in ebpf
-    case Op::LT: return os << "<";
-    case Op::LE: return os << "<=";
-    case Op::GT: return os << ">";
-    case Op::GE: return os << ">=";
+    case Op::LT: return os << "<"; // TODO: os << "u<";
+    case Op::LE: return os << "<="; // TODO: os << "u<=";
+    case Op::GT: return os << ">"; // TODO: os << "u>";
+    case Op::GE: return os << ">="; // TODO: os << "u>=";
     case Op::SLT: return os << "s<";
     case Op::SLE: return os << "s<=";
     case Op::SGT: return os << "s>";
@@ -302,7 +302,7 @@ struct InstructionPrinterVisitor {
         os_ << "(" << access.basereg << sign << offset << ")";
     }
 
-    void print(Condition const& cond) { os_ << cond.left << " " << cond.op << " " << cond.right; }
+    void print(Condition const& cond) { os_ << cond.left << " " << ((!cond.is64) ? "w" : "") << cond.op << " " << cond.right; }
 
     void operator()(Mem const& b) {
         if (b.is_load) {
@@ -328,6 +328,7 @@ struct InstructionPrinterVisitor {
     void operator()(Assert const& a) {
         os_ << "assert " << a.cst;
     }
+
 };
 
 string to_string(label_t const& label) {
@@ -507,4 +508,13 @@ std::ostream& operator<<(std::ostream& os, const btf_line_info_t& line_info) {
     os << "; " << line_info.file_name << ":" << line_info.line_number << "\n";
     os << "; " << line_info.source_line << "\n";
     return os;
+}
+
+
+std::string crab::z_number::to_string() const { return _n.str(); }
+
+std::string crab::interval_t::to_string() const {
+    std::ostringstream s;
+    s << *this;
+    return s.str();
 }
